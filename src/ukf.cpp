@@ -1,5 +1,6 @@
 #include "ukf.h"
 #include "Eigen/Dense"
+#include <iostream>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -85,50 +86,89 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     */
     if(is_initialized_ == false) {
 
-        if(meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+        switch(meas_package.sensor_type_) {
+            case MeasurementPackage::RADAR:
+            {
 
-            // read values
-            double rho = meas_package.raw_measurements_[0];
-            double phi = meas_package.raw_measurements_[1];
-            double rho_dot = meas_package.raw_measurements_[2];
+                // read values
+                double rho = meas_package.raw_measurements_[0];
+                double phi = meas_package.raw_measurements_[1];
+                double rho_dot = meas_package.raw_measurements_[2];
 
-            // calculate velocity
-            double vx = rho_dot * cos(phi);
-            double vy = rho_dot * sin(phi);
-            double v = sqrt(vx * vx + vy * vy);
+                // calculate velocity
+                double vx = rho_dot * cos(phi);
+                double vy = rho_dot * sin(phi);
+                double v = sqrt(vx * vx + vy * vy);
 
-            // set the state vector
-            x_ <<   std::min(rho * cos(phi), 0.0001),   // px
-                    std::min(rho * sin(phi), 0.0001),   // üy
-                    v,
-                    rho,
-                    rho_dot;
+                // set the state vector
+                x_ <<   std::min(rho * cos(phi), 0.0001),   // px
+                        std::min(rho * sin(phi), 0.0001),   // üy
+                        v,
+                        rho,
+                        rho_dot;
 
-            // init covariance matrix with laser data
-            P_ <<   std::pow(std_radr_, 2),     0,      0,      0,      0,
-                    0,      std::pow(std_radr_, 2),     0,      0,      0,
-                    0,      0,      std::pow(std_radrd_, 2),    0,      0,
-                    0,      0,      0,      std_radphi_,        0,
-                    0,      0,      0,      0,      std_radphi_;
+                // init covariance matrix with laser data
+                P_ <<   std::pow(std_radr_, 2),     0,      0,      0,      0,
+                        0,      std::pow(std_radr_, 2),     0,      0,      0,
+                        0,      0,      std::pow(std_radrd_, 2),    0,      0,
+                        0,      0,      0,      std_radphi_,        0,
+                        0,      0,      0,      0,      std_radphi_;
 
-        } else if(meas_package.sensor_type_ == MeasurementPackage::LASER) {
+                break;
+            }
 
-            // can set values for position directly
-            x_ << meas_package.raw_measurements_(0), meas_package.raw_measurements_(1), 0., 0., 0.;
+            case MeasurementPackage::LASER:
+            {
 
-            // init covariance matrix
-            P_ <<   std::pow(std_laspx_, 2),    0,      0,      0,      0,
-                    0,      std::pow(std_laspy_, 2),    0,      0,      0,
-                    0,      0,      1,      0,      0,
-                    0,      0,      0,      1,      0,
-                    0,      0,      0,      0,      1;
+                // can set values for position directly
+                x_ << meas_package.raw_measurements_(0), meas_package.raw_measurements_(1), 0., 0., 0.;
+
+                // init covariance matrix
+                P_ <<   std::pow(std_laspx_, 2),    0,      0,      0,      0,
+                        0,      std::pow(std_laspy_, 2),    0,      0,      0,
+                        0,      0,      1,      0,      0,
+                        0,      0,      0,      1,      0,
+                        0,      0,      0,      0,      1;
+                break;
+            }
+
+            default:
+                std::cout << "Error - unknown sensor type " << meas_package.sensor_type_ << std::endl;
+                return;
         }
 
         // save measurement timestamp
         time_us_ = meas_package.timestamp_;
 
+        // mark UKF as initialized
         is_initialized_ = true;
+
+        // no predition as freshly initialized
         return;
+    }
+
+    // for prediction step, the time difference is needed - in seconds!
+    double dT = (meas_package.timestamp_ - time_us_) / 1000000.0;
+
+    // save measurement timestamp
+    time_us_ = meas_package.timestamp_;
+
+    // Prediction step with newly data
+    Prediction(dT);
+
+    // Update step -- need to take care what the measurement's source is
+    switch(meas_package.sensor_type_) {
+        case MeasurementPackage::RADAR:
+            UpdateRadar(meas_package);
+            break;
+
+        case MeasurementPackage::LASER:
+            UpdateRadar(meas_package);
+            break;
+
+        default:
+            std::cout << "Error - unknown sensor type " << meas_package.sensor_type_ << std::endl;
+            return;
     }
 }
 
