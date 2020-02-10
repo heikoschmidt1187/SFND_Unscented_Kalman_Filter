@@ -67,9 +67,6 @@ UKF::UKF() {
     // update the augmented state dimension by ny_k and ny_phi_dot_dot
     n_aug_ = n_x_ + 2;
 
-    // calculate lambda initally
-    lambda_ = 3 - n_aug_;
-
     // calculate size of the sigma point prediction matrix
     Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);
 
@@ -178,6 +175,55 @@ void UKF::Prediction(double delta_t) {
     * Modify the state vector, x_. Predict sigma points, the state,
     * and the state covariance matrix.
     */
+
+    // generate sigma points over n_x_ dimension
+    lambda_ = 3 - n_x_;
+
+    // sigma point matrix creation
+    MatrixXd Xsig = MatrixXd(n_x_, 2 * n_x_ + 1);
+
+    // calculate square root of P
+    MatrixXd A = P_.llt().matrixL();
+
+    // set first coloumn of sigma point matrix with state vector
+    Xsig.col(0) = x_;
+
+    // fill remaining coloumns with calculated values
+    for(int i = 0; i < n_x_; ++i) {
+        Xsig.col(i + 1) = x_ + sqrt(lambda_ + n_x_) * A.col(i);
+        Xsig.col(i + 1 + n_x_) = x_ - sqrt(lambda_ + n_x_) * A.col(i);
+    }
+
+    // spreading for augmentation
+    lambda_ = 3 - n_aug_;
+
+    // create augmented mean vector, augmented covariance matrix and sigma point matrix
+    VectorXd x_aug = VectorXd(n_aug_);
+    MatrixXd P_aug = MatrixXd(n_aug_, n_aug_);
+    MatrixXd Xsig_aug = MatrixXd(n_aug_, 2 * n_aug_ + 1);
+
+    // create the augmented mean state
+    x_aug.head(n_x_) = x_;
+    x_aug(n_x_) = 0;
+    x_aug(n_x_ + 1) = 0;
+
+    // create augmented covariance matrix
+    P_aug.fill(0.0);
+    P_aug.topLeftCorner(n_x_, n_x_) = P_;
+    P_aug(n_x_, n_x_) = std::pow(std_a_, 2);
+    P_aug(n_x_ + 1, n_x_ + 1) = std::pow(std_yawdd_, 2);
+
+    // create square root matrix again
+    MatrixXd L = P_aug.llt().matrixL();
+
+    // create augmented sigma points - first col is state vector
+    Xsig_aug.col(0) = x_aug;
+
+    // calculate rest
+    for(int i = 0; i < n_aug_; ++i) {
+        Xsig_aug.col(i + 1) = x_aug + sqrt(lambda_ + n_aug_) * L.col(i);
+        Xsig_aug.col(i + 1 + n_aug_) = x_aug - sqrt(lambda_ + n_aug_) * L.col(i);
+    }
 }
 
 void UKF::UpdateLidar(MeasurementPackage meas_package) {
