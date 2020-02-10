@@ -224,6 +224,60 @@ void UKF::Prediction(double delta_t) {
         Xsig_aug.col(i + 1) = x_aug + sqrt(lambda_ + n_aug_) * L.col(i);
         Xsig_aug.col(i + 1 + n_aug_) = x_aug - sqrt(lambda_ + n_aug_) * L.col(i);
     }
+
+    // start sigma point prediction
+
+    // loop over all sigma points
+    for(int i = 0; i < n_aug_; ++i) {
+
+        // extract data for easier access
+        double p_x = Xsig_aug(0, i);
+        double p_y = Xsig_aug(1, i);
+        double v = Xsig_aug(2, i);
+        double yaw = Xsig_aug(3, i);
+        double yawd = Xsig_aug(4, i);
+        double nu_a = Xsig_aug(5, i);
+        double nu_yawdd = Xsig_aug(6, i);
+
+        // predicted state values
+        double px_p, py_p;
+
+        // predict position - take care for division by zero
+        if(fabs(yawd) > 0.001) {
+            double div = v / yawd;
+            double lin = yaw + yawd * delta_t;
+
+            px_p = p_x + div * (sin(lin) - sin(yaw));
+            py_p = p_y + div * (cos(yaw) - cos(lin));
+        } else {
+            px_p = p_x + v * delta_t * cos(yaw);
+            py_p = p_y + v * delta_t * sin(yaw);
+        }
+
+        // predict velocity, yaw angle and yaw rate
+        double v_p = v;
+        double yaw_p = yaw + yawd * delta_t;
+        double yawd_p = yawd;
+
+        // add proces noise for each component
+        double dTsq = std::pow(delta_t, 2);
+        double half_nu_a = .5 * nu_a;
+
+        px_p = px_p + half_nu_a * dTsq * cos(yaw);
+        py_p = py_p + half_nu_a * dTsq * sin(yaw);
+        v_p = v_p + nu_a * delta_t;
+
+        yaw_p = yaw_p + 0.5 * nu_yawdd * std::pow(delta_t, 2);
+        yawd_p = yawd_p + nu_yawdd * delta_t;
+
+        // write the predicted sigma points back to matrix
+        Xsig_pred_(0, i) = px_p;
+        Xsig_pred_(1, i) = py_p;
+        Xsig_pred_(2, i) = v_p;
+        Xsig_pred_(3, i) = yaw_p;
+        Xsig_pred_(4, i) = yawd_p;
+    }
+
 }
 
 void UKF::UpdateLidar(MeasurementPackage meas_package) {
