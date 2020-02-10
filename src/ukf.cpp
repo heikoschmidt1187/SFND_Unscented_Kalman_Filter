@@ -274,10 +274,39 @@ void UKF::Prediction(double delta_t) {
         Xsig_pred_(0, i) = px_p;
         Xsig_pred_(1, i) = py_p;
         Xsig_pred_(2, i) = v_p;
+
         Xsig_pred_(3, i) = yaw_p;
         Xsig_pred_(4, i) = yawd_p;
     }
 
+    // prepare prediction state vector and covariance matrix
+    x_.fill(0.);
+    P_.fill(0.);
+
+    // set weights for sate mean calculation
+    weights_(0) = lambda_ / (lambda_ + n_aug_);
+    for(int i = 0; i < 2 * n_aug_ + 1; ++i)
+        weights_(i) = 0.5 / (n_aug_ + lambda_);
+
+    // predict state mean
+    for(int i = 0; i < 2 * n_aug_ + 1; ++i)
+        x_ += weights_(i) * Xsig_pred_.col(i);
+
+    // predict covariance matrix
+    for(int i = 0; i < 2 * n_aug_ + 1; ++i) {
+
+        // state difference
+        VectorXd x_diff = Xsig_pred_.col(i) - x_;
+
+        // angle normalization
+        while(x_diff(3) > M_PI)
+            x_diff(3) -= 2 * M_PI;
+
+        while(x_diff(3) < -M_PI)
+            x_diff(3) += 2 * M_PI;
+
+        P_ += weights_(i) * x_diff * x_diff.transpose();
+    }
 }
 
 void UKF::UpdateLidar(MeasurementPackage meas_package) {
@@ -296,4 +325,61 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     * covariance, P_.
     * You can also calculate the radar NIS, if desired.
     */
+
+    // set measurement state dimension --> radar has r, phi, r_dot
+    int n_z = 3;
+
+    // create sigma point matrix, mean predicted measurement and covariance matrix in
+    // measurement space
+    MatrixXd Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
+    VectorXd z_pred = VectorXd(n_z);
+    MatrixXd S = MatrixXd(n_z, n_z);
+
+    // transform sigma points into measurement space
+    for(int i = 0; i < 2 * n_aug_ + 1; ++i) {
+
+        // values for further calculation
+        double p_x = Xsig_pred_(0, i);
+        double p_y = Xsig_pred_(1, i);
+        double v = Xsig_pred_(2, i);
+        double yaw = Xsig_pred_(3, i);
+
+        double vx = v * cos(yaw);
+        double vy = v * sin(yaw);
+
+        // measurement model
+        Zsig(0, i) = sqrt(std::pow(p_x, 2) + std::pow(p_y, 2));     // r
+        Zsig(1, i) = atan2(p_y, p_x);                               // phi
+        Zsig(2, i) = (p_x * vx + p_y * vy) / Zsig(0, i);            // r_dot
+    }
+
+    // mean predicted measurement
+    z_pred.fill(0.);
+    for(int i = 0; i < 2 * n_aug_ + 1; ++i)
+        z_pred += weights_(i) * Zsig.col(i);
+
+    S.fill(0.);
+    for(int i = 0; i < 2 * n_aug_ + 1; ++i) {
+
+        // residual
+        VectorXd z_diff = Zsig.col(i) - z_pred;
+
+        // angle normalization
+        while(z_diff(1) > M_PI)
+            z_diff(1) -= 2 * M_PI;
+
+        while(z_diff(1) < M_PI)
+            z_diff(1) += 2 * M_PI;
+
+        S += weights_(i) * z_diff * z_diff.transpose();
+    }
+
+    // add measurement noise to covariance matrix
+    MatrixXd R = MatrixXd(n_z, n_z);
+    R <<    std::pow(std_radr_, 2),     0,      0,
+            0,      std::pow(std_radphi_, 2),   0,
+            0,      0,      std::pow(std_radrd_, 2);
+
+    S += R;
+
 }
