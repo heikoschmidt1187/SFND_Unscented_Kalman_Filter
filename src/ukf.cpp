@@ -322,6 +322,7 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
     * covariance, P_.
     * You can also calculate the lidar NIS, if desired.
     */
+
     // set measurement state dimension --> lidar has px and py
     int n_z = 2;
 
@@ -448,16 +449,16 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
         z_pred += weights_(i) * Zsig.col(i);
     }
 
-    for(int i = 0; i < 2 * n_aug_ + 1; ++i) {
+    //calculate measurement covariance matrix S
+    for (int i = 0; i < 2 * n_aug_ + 1; i++) {
 
-        // residual
+        // calculate residual
         VectorXd z_diff = Zsig.col(i) - z_pred;
 
-        // angle normalization
-        while(z_diff(1) > M_PI)
+        while (z_diff(1) > M_PI)
             z_diff(1) -= 2. * M_PI;
 
-        while(z_diff(1) < M_PI)
+        while (z_diff(1) < - M_PI)
             z_diff(1) += 2. * M_PI;
 
         S += weights_(i) * z_diff * z_diff.transpose();
@@ -480,10 +481,9 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
 
     // create cross correlation matrix Tc
     MatrixXd Tc = MatrixXd(n_x_, n_z);
+    Tc.fill(0.0);
 
     // calculate the cross correlation matrix
-    Tc.fill(0.);
-
     for(int i = 0; i < 2 * n_aug_ + 1; ++i) {
 
         VectorXd z_diff = Zsig.col(i) - z_pred;
@@ -520,6 +520,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
 
     while(z_diff(1) < -M_PI)
         z_diff(1) += 2. * M_PI;
+
 
     // update state mean and covariance matrix
     x_ += K * z_diff;
